@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conquerors: Indian Version</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --p-color: #22c55e;
+            --b-color: #ef4444;
+            --accent: #38bdf8;
+            --gold: #fbbf24;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: var(--bg);
+            color: white;
+            margin: 0;
+            text-align: center;
+        }
+
+        #splash {
+            position: fixed;
+            width: 100%; height: 100%;
+            background: black;
+            z-index: 9999;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+
+        #game { display: none; padding: 20px; }
+        
+        .ui-panel {
+            display: flex; justify-content: center; align-items: center;
+            gap: 30px; padding: 20px;
+            background: #111827; border-bottom: 3px solid var(--accent);
+        }
+
+        .dice {
+            font-size: 3.5rem; padding: 10px;
+            border: 3px solid var(--accent);
+            background: #000; min-width: 70px;
+        }
+
+        #status {
+            font-size: 1.2rem; margin: 15px;
+            padding: 10px; border-radius: 5px;
+            background: #1e293b; color: var(--gold);
+        }
+
+        #map-container {
+            width: 95%; max-width: 1000px;
+            margin: 10px auto; overflow-x: auto;
+        }
+
+        .state {
+            fill: #475569; stroke: #0f172a; stroke-width: 2;
+            cursor: pointer; transition: 0.2s;
+        }
+
+        .conquered-p { fill: var(--p-color) !important; }
+        .conquered-b { fill: var(--b-color) !important; }
+
+        .label {
+            font-size: 9px; fill: white; font-weight: bold;
+            pointer-events: none; text-anchor: middle;
+        }
+
+        button {
+            padding: 15px 25px; font-weight: bold;
+            cursor: pointer; border: none; border-radius: 8px;
+            text-transform: uppercase;
+        }
+
+        #roll-btn { background: var(--accent); color: black; }
+        #conquer-btn { background: #6366f1; color: white; }
+        #conquer-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        
+        .active-conquer {
+            box-shadow: 0 0 20px var(--gold);
+            border: 2px solid white !important;
+        }
+
+        #overlay {
+            display: none; position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 1000;
+            flex-direction: column; justify-content: center; align-items: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="splash">
+        <h1 style="font-size:3.5rem; color:var(--gold);">HS Gaming Industries</h1>
+        <h2 style="color:#aaa;">Created by Vivaan Upadhyay<br>Coded by Shravan Sundar</h2>
+    </div>
+
+    <div id="game">
+        <div class="ui-panel">
+            <div>PLAYER<div id="p-dice" class="dice">?</div></div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <button id="roll-btn">ROLL DICE</button>
+                <button id="conquer-btn" disabled>CONQUER MODE: OFF</button>
+            </div>
+            <div>BOT<div id="b-dice" class="dice">?</div></div>
+        </div>
+
+        <div id="status">System Status: Active. Awaiting Input.</div>
+
+        <div id="map-container">
+            <svg viewBox="0 0 1000 500" id="india-svg">
+                <g id="states-group"></g>
+            </svg>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <h1 id="end-msg" style="font-size:3rem; color:var(--gold);"></h1>
+        <button onclick="location.reload()" style="background:var(--gold); padding:20px 40px; font-size:1.5rem;">REMATCH</button>
+    </div>
+
+    <script>
+        const allStates = [
+            "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", 
+            "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", 
+            "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", 
+            "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", 
+            "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", 
+            "Uttar Pradesh", "Uttarakhand", "West Bengal", "Andaman", "Chandigarh", 
+            "DN & Haveli", "Daman & Diu", "Delhi", "J & K", "Ladakh", "Lakshadweep", "Puducherry"
+        ];
+
+        let pCount = 0, bCount = 0;
+        let turnWinner = null;
+        let isConquerMode = false;
+        let conquered = {};
+
+        setTimeout(() => {
+            document.getElementById('splash').style.display = 'none';
+            document.getElementById('game').style.display = 'block';
+            initMap();
+        }, 5000);
+
+        function initMap() {
+            const group = document.getElementById('states-group');
+            const cols = 6;
+            allStates.forEach((name, i) => {
+                const x = 20 + (i % cols) * 160;
+                const y = 20 + Math.floor(i / cols) * 80;
+                
+                const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                rect.setAttribute("x", x); rect.setAttribute("y", y);
+                rect.setAttribute("width", "150"); rect.setAttribute("height", "70");
+                rect.setAttribute("class", "state");
+                rect.setAttribute("id", "s-" + i);
+                rect.onclick = () => handleInput(i, name);
+                
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", x + 75); text.setAttribute("y", y + 35);
+                text.setAttribute("class", "label");
+                text.setAttribute("id", "t-" + i);
+                text.textContent = name;
+
+                group.appendChild(rect);
+                group.appendChild(text);
+            });
+        }
+
+        document.getElementById('roll-btn').onclick = function() {
+            const p = Math.floor(Math.random() * 6) + 1;
+            const b = Math.floor(Math.random() * 6) + 1;
+            document.getElementById('p-dice').innerText = p;
+            document.getElementById('b-dice').innerText = b;
+
+            if (p > b) {
+                turnWinner = 'P';
+                document.getElementById('status').innerText = "PLAYER WON ROLL! " + (isConquerMode ? "CHOOSE ANY STATE TO STEAL." : "CHOOSE A GREY STATE.");
+                this.disabled = true;
+            } else if (b > p) {
+                turnWinner = 'B';
+                document.getElementById('status').innerText = "BOT WON ROLL! Analyzing map...";
+                this.disabled = true;
+                setTimeout(botLogic, 1000);
+            } else {
+                document.getElementById('status').innerText = "DRAW! SYSTEM RE-ARMED. ROLL AGAIN.";
+            }
+        };
+
+        document.getElementById('conquer-btn').onclick = function() {
+            isConquerMode = !isConquerMode;
+            this.innerText = isConquerMode ? "CONQUER MODE: ON" : "CONQUER MODE: OFF";
+            this.classList.toggle('active-conquer');
+            document.getElementById('status').innerText = isConquerMode ? "CONQUER MODE ACTIVE! ROLL TO STEAL." : "CONQUER MODE DISABLED.";
+        };
+
+        function handleInput(index, name) {
+            if (turnWinner !== 'P') return;
+            
+            // Logic for stealing:
+            if (isConquerMode) {
+                // Can capture anything that isn't already yours
+                if (conquered[index] === 'P') return;
+                applyCapture(index, 'P', name);
+            } else {
+                // Normal mode: Can only capture neutral states
+                if (conquered[index]) return;
+                applyCapture(index, 'P', name);
+            }
+        }
+
+        function botLogic() {
+            let target;
+            if (isConquerMode && pCount > 0) {
+                // Bot logic: specifically target Player's states if in conquer mode
+                const targets = Object.keys(conquered).filter(k => conquered[k] === 'P');
+                target = targets[Math.floor(Math.random() * targets.length)];
+            } else {
+                // Otherwise find a neutral state
+                target = allStates.findIndex((_, i) => !conquered[i]);
+                if (target === -1) { // If no neutral left, steal player's
+                   const targets = Object.keys(conquered).filter(k => conquered[k] === 'P');
+                   target = targets[0];
+                }
+            }
+            applyCapture(target, 'B', allStates[target]);
+        }
+
+        function applyCapture(i, player, name) {
+            if (conquered[i] === 'P') pCount--;
+            if (conquered[i] === 'B') bCount--;
+
+            conquered[i] = player;
+            if (player === 'P') pCount++; else bCount++;
+
+            document.getElementById('s-' + i).setAttribute("class", "state conquered-" + player.toLowerCase());
+            document.getElementById('t-' + i).textContent = "X" + player + " " + name;
+
+            // Reset turn
+            turnWinner = null;
+            document.getElementById('roll-btn').disabled = false;
+            
+            // Check for Conquer Mode availability
+            if (pCount >= 3 && bCount >= 3) {
+                document.getElementById('conquer-btn').disabled = false;
+            }
+
+            if (Object.keys(conquered).length === allStates.length) {
+                document.getElementById('overlay').style.display = 'flex';
+                document.getElementById('end-msg').innerText = pCount > bCount ? "You are the King of India" : "Sadly, you lost";
+            } else {
+                document.getElementById('status').innerText = "Turn Complete. Roll again.";
+            }
+        }
+    </script>
+</body>
+</html>
